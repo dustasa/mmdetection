@@ -1,5 +1,6 @@
 # 之后运行官方的验证代码可以运行
 from mmdet.apis import init_detector, inference_detector
+import os
 
 if __name__ == '__main__':
     config_file = 'configs/faster_rcnn/faster_rcnn_r50_fpn_1x_coco.py'
