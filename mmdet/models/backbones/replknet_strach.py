@@ -173,6 +173,7 @@ class RepLKNet(BaseModule):
             return outs
 
     def forward(self, x):
+        """Forward function."""
         x = self.forward_features(x)
         if self.out_indices:
             return x
@@ -182,6 +183,14 @@ class RepLKNet(BaseModule):
             x = torch.flatten(x, 1)
             x = self.head(x)
             return x
+        # outs = []
+        # for i, layer_name in enumerate(self.res_layers):
+        #     res_layer = getattr(self, layer_name)
+        #     x = res_layer(x)
+        #     if i in self.out_indices:
+        #         outs.append(x)
+        # # print(f'----AOSUN---- outs is:{outs}')
+        # return tuple(outs)
 
     def structural_reparam(self):
         for m in self.modules():
@@ -294,9 +303,11 @@ class RepLKBlock(BaseModule):
         super().__init__()
         self.pw1 = conv_bn_relu(in_channels, dw_channels, 1, 1, 0, groups=1)
         self.pw2 = conv_bn(dw_channels, in_channels, 1, 1, 0, groups=1)
-        self.large_kernel = ReparamLargeKernelConv(in_channels=dw_channels, out_channels=dw_channels,
+        self.large_kernel = ReparamLargeKernelConv(in_channels=dw_channels,
+                                                   out_channels=dw_channels,
                                                    kernel_size=block_lk_size,
-                                                   stride=1, groups=dw_channels, small_kernel=small_kernel,
+                                                   stride=1, groups=dw_channels,
+                                                   small_kernel=small_kernel,
                                                    small_kernel_merged=small_kernel_merged)
         self.lk_nonlinear = nn.ReLU()
         self.prelkb_bn = get_bn(in_channels)
