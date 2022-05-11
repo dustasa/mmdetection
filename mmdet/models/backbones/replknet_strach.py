@@ -3,10 +3,9 @@ import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath
 from mmcv.runner import BaseModule
-
+from ..builder import BACKBONES
 import sys
 import os
-from ..builder import BACKBONES
 
 
 def get_conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias):
@@ -77,147 +76,19 @@ def fuse_bn(conv, bn):
     return kernel * t, beta - running_mean * gamma / std
 
 
-class ReparamLargeKernelConv(BaseModule):
-
-    def __init__(self, in_channels, out_channels, kernel_size,
-                 stride, groups,
-                 small_kernel,
-                 small_kernel_merged=False):
-        super(ReparamLargeKernelConv, self).__init__()
-        self.kernel_size = kernel_size
-        self.small_kernel = small_kernel
-        # We assume the conv does not change the feature map size, so padding = k//2.
-        # Otherwise, you may configure padding as you wish, and change the padding of small_conv accordingly.
-        padding = kernel_size // 2
-        if small_kernel_merged:
-            self.lkb_reparam = get_conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
-                                          stride=stride, padding=padding, dilation=1, groups=groups, bias=True)
-        else:
-            self.lkb_origin = conv_bn(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
-                                      stride=stride, padding=padding, dilation=1, groups=groups)
-            if small_kernel is not None:
-                assert small_kernel <= kernel_size, 'The kernel size for re-param cannot be larger than the large kernel!'
-                self.small_conv = conv_bn(in_channels=in_channels, out_channels=out_channels, kernel_size=small_kernel,
-                                          stride=stride, padding=small_kernel // 2, groups=groups, dilation=1)
-
-    def forward(self, inputs):
-        if hasattr(self, 'lkb_reparam'):
-            out = self.lkb_reparam(inputs)
-        else:
-            out = self.lkb_origin(inputs)
-            if hasattr(self, 'small_conv'):
-                out += self.small_conv(inputs)
-        return out
-
-    def get_equivalent_kernel_bias(self):
-        eq_k, eq_b = fuse_bn(self.lkb_origin.conv, self.lkb_origin.bn)
-        if hasattr(self, 'small_conv'):
-            small_k, small_b = fuse_bn(self.small_conv.conv, self.small_conv.bn)
-            eq_b += small_b
-            #   add to the central part
-            eq_k += nn.functional.pad(small_k, [(self.kernel_size - self.small_kernel) // 2] * 4)
-        return eq_k, eq_b
-
-    def merge_kernel(self):
-        eq_k, eq_b = self.get_equivalent_kernel_bias()
-        self.lkb_reparam = get_conv2d(in_channels=self.lkb_origin.conv.in_channels,
-                                      out_channels=self.lkb_origin.conv.out_channels,
-                                      kernel_size=self.lkb_origin.conv.kernel_size, stride=self.lkb_origin.conv.stride,
-                                      padding=self.lkb_origin.conv.padding, dilation=self.lkb_origin.conv.dilation,
-                                      groups=self.lkb_origin.conv.groups, bias=True)
-        self.lkb_reparam.weight.data = eq_k
-        self.lkb_reparam.bias.data = eq_b
-        self.__delattr__('lkb_origin')
-        if hasattr(self, 'small_conv'):
-            self.__delattr__('small_conv')
-
-
-class ConvFFN(BaseModule):
-
-    def __init__(self, in_channels, internal_channels, out_channels, drop_path):
-        super().__init__()
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-        self.preffn_bn = get_bn(in_channels)
-        self.pw1 = conv_bn(in_channels=in_channels, out_channels=internal_channels, kernel_size=1, stride=1, padding=0,
-                           groups=1)
-        self.pw2 = conv_bn(in_channels=internal_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0,
-                           groups=1)
-        self.nonlinear = nn.GELU()
-
-    def forward(self, x):
-        out = self.preffn_bn(x)
-        out = self.pw1(out)
-        out = self.nonlinear(out)
-        out = self.pw2(out)
-        return x + self.drop_path(out)
-
-
-class RepLKBlock(BaseModule):
-
-    def __init__(self, in_channels, dw_channels, block_lk_size, small_kernel, drop_path, small_kernel_merged=False):
-        super().__init__()
-        self.pw1 = conv_bn_relu(in_channels, dw_channels, 1, 1, 0, groups=1)
-        self.pw2 = conv_bn(dw_channels, in_channels, 1, 1, 0, groups=1)
-        self.large_kernel = ReparamLargeKernelConv(in_channels=dw_channels, out_channels=dw_channels,
-                                                   kernel_size=block_lk_size,
-                                                   stride=1, groups=dw_channels, small_kernel=small_kernel,
-                                                   small_kernel_merged=small_kernel_merged)
-        self.lk_nonlinear = nn.ReLU()
-        self.prelkb_bn = get_bn(in_channels)
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-        print('drop path:', self.drop_path)
-
-    def forward(self, x):
-        out = self.prelkb_bn(x)
-        out = self.pw1(out)
-        out = self.large_kernel(out)
-        out = self.lk_nonlinear(out)
-        out = self.pw2(out)
-        return x + self.drop_path(out)
-
-
-class RepLKNetStage(BaseModule):
-
-    def __init__(self, channels, num_blocks, stage_lk_size, drop_path,
-                 small_kernel, dw_ratio=1, ffn_ratio=4,
-                 use_checkpoint=False,  # train with torch.utils.checkpoint to save memory
-                 small_kernel_merged=False,
-                 norm_intermediate_features=False):
-        super().__init__()
-        self.use_checkpoint = use_checkpoint
-        blks = []
-        for i in range(num_blocks):
-            block_drop_path = drop_path[i] if isinstance(drop_path, list) else drop_path
-            #   Assume all RepLK Blocks within a stage share the same lk_size. You may tune it on your own model.
-            replk_block = RepLKBlock(in_channels=channels, dw_channels=int(channels * dw_ratio),
-                                     block_lk_size=stage_lk_size,
-                                     small_kernel=small_kernel, drop_path=block_drop_path,
-                                     small_kernel_merged=small_kernel_merged)
-            convffn_block = ConvFFN(in_channels=channels, internal_channels=int(channels * ffn_ratio),
-                                    out_channels=channels,
-                                    drop_path=block_drop_path)
-            blks.append(replk_block)
-            blks.append(convffn_block)
-        self.blocks = nn.ModuleList(blks)
-        if norm_intermediate_features:
-            self.norm = get_bn(channels)  # Only use this with RepLKNet-XL on downstream tasks
-        else:
-            self.norm = nn.Identity()
-
-    def forward(self, x):
-        for blk in self.blocks:
-            if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x)  # Save training memory
-            else:
-                x = blk(x)
-        return x
-
-
 @BACKBONES.register_module()
 class RepLKNet(BaseModule):
-
-    def __init__(self, large_kernel_sizes, layers, channels, drop_path_rate, small_kernel,
-                 dw_ratio=1, ffn_ratio=4, in_channels=3, num_classes=1000, out_indices=None,
+    def __init__(self,
+                 large_kernel_sizes,
+                 layers,
+                 channels,
+                 drop_path_rate,
+                 small_kernel,
+                 dw_ratio=1,
+                 ffn_ratio=4,
+                 in_channels=3,
+                 num_classes=1000,
+                 out_indices=None,
                  use_checkpoint=False,
                  small_kernel_merged=False,
                  use_sync_bn=False,
@@ -225,7 +96,7 @@ class RepLKNet(BaseModule):
                  # for RepLKNet-XL on COCO and ADE20K, use an extra BN to
                  # normalize the intermediate feature maps then feed them into the heads
                  ):
-        super().__init__()
+        super(RepLKNet, self).__init__()
 
         if num_classes is None and out_indices is None:
             raise ValueError('must specify one of num_classes (for pretraining) and out_indices (for downstream tasks)')
@@ -340,37 +211,140 @@ class RepLKNet(BaseModule):
                 m[1] = nn.Identity()
 
 
-def create_RepLKNet31B(drop_path_rate=0.3, num_classes=1000, use_checkpoint=True, small_kernel_merged=False):
-    return RepLKNet(large_kernel_sizes=[31, 29, 27, 13], layers=[2, 2, 18, 2], channels=[128, 256, 512, 1024],
-                    drop_path_rate=drop_path_rate, small_kernel=5, num_classes=num_classes,
-                    use_checkpoint=use_checkpoint,
-                    small_kernel_merged=small_kernel_merged)
+@BACKBONES.register_module()
+class ReparamLargeKernelConv(BaseModule):
+    def __init__(self, in_channels, out_channels, kernel_size,
+                 stride, groups,
+                 small_kernel,
+                 small_kernel_merged=False):
+        super(ReparamLargeKernelConv, self).__init__()
+        self.kernel_size = kernel_size
+        self.small_kernel = small_kernel
+        # We assume the conv does not change the feature map size, so padding = k//2.
+        # Otherwise, you may configure padding as you wish, and change the padding of small_conv accordingly.
+        padding = kernel_size // 2
+        if small_kernel_merged:
+            self.lkb_reparam = get_conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
+                                          stride=stride, padding=padding, dilation=1, groups=groups, bias=True)
+        else:
+            self.lkb_origin = conv_bn(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
+                                      stride=stride, padding=padding, dilation=1, groups=groups)
+            if small_kernel is not None:
+                assert small_kernel <= kernel_size, 'The kernel size for re-param cannot be larger than the large kernel!'
+                self.small_conv = conv_bn(in_channels=in_channels, out_channels=out_channels, kernel_size=small_kernel,
+                                          stride=stride, padding=small_kernel // 2, groups=groups, dilation=1)
+
+    def forward(self, inputs):
+        if hasattr(self, 'lkb_reparam'):
+            out = self.lkb_reparam(inputs)
+        else:
+            out = self.lkb_origin(inputs)
+            if hasattr(self, 'small_conv'):
+                out += self.small_conv(inputs)
+        return out
+
+    def get_equivalent_kernel_bias(self):
+        eq_k, eq_b = fuse_bn(self.lkb_origin.conv, self.lkb_origin.bn)
+        if hasattr(self, 'small_conv'):
+            small_k, small_b = fuse_bn(self.small_conv.conv, self.small_conv.bn)
+            eq_b += small_b
+            #   add to the central part
+            eq_k += nn.functional.pad(small_k, [(self.kernel_size - self.small_kernel) // 2] * 4)
+        return eq_k, eq_b
+
+    def merge_kernel(self):
+        eq_k, eq_b = self.get_equivalent_kernel_bias()
+        self.lkb_reparam = get_conv2d(in_channels=self.lkb_origin.conv.in_channels,
+                                      out_channels=self.lkb_origin.conv.out_channels,
+                                      kernel_size=self.lkb_origin.conv.kernel_size, stride=self.lkb_origin.conv.stride,
+                                      padding=self.lkb_origin.conv.padding, dilation=self.lkb_origin.conv.dilation,
+                                      groups=self.lkb_origin.conv.groups, bias=True)
+        self.lkb_reparam.weight.data = eq_k
+        self.lkb_reparam.bias.data = eq_b
+        self.__delattr__('lkb_origin')
+        if hasattr(self, 'small_conv'):
+            self.__delattr__('small_conv')
 
 
-def create_RepLKNet31L(drop_path_rate=0.3, num_classes=1000, use_checkpoint=True, small_kernel_merged=False):
-    return RepLKNet(large_kernel_sizes=[31, 29, 27, 13], layers=[2, 2, 18, 2], channels=[192, 384, 768, 1536],
-                    drop_path_rate=drop_path_rate, small_kernel=5, num_classes=num_classes,
-                    use_checkpoint=use_checkpoint,
-                    small_kernel_merged=small_kernel_merged)
+@BACKBONES.register_module()
+class ConvFFN(BaseModule):
+
+    def __init__(self, in_channels, internal_channels, out_channels, drop_path):
+        super().__init__()
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.preffn_bn = get_bn(in_channels)
+        self.pw1 = conv_bn(in_channels=in_channels, out_channels=internal_channels, kernel_size=1, stride=1, padding=0,
+                           groups=1)
+        self.pw2 = conv_bn(in_channels=internal_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0,
+                           groups=1)
+        self.nonlinear = nn.GELU()
+
+    def forward(self, x):
+        out = self.preffn_bn(x)
+        out = self.pw1(out)
+        out = self.nonlinear(out)
+        out = self.pw2(out)
+        return x + self.drop_path(out)
 
 
-def create_RepLKNetXL(drop_path_rate=0.3, num_classes=1000, use_checkpoint=True, small_kernel_merged=False):
-    return RepLKNet(large_kernel_sizes=[27, 27, 27, 13], layers=[2, 2, 18, 2], channels=[256, 512, 1024, 2048],
-                    drop_path_rate=drop_path_rate, small_kernel=None, dw_ratio=1.5,
-                    num_classes=num_classes, use_checkpoint=use_checkpoint,
-                    small_kernel_merged=small_kernel_merged)
+@BACKBONES.register_module()
+class RepLKBlock(BaseModule):
+
+    def __init__(self, in_channels, dw_channels, block_lk_size, small_kernel, drop_path, small_kernel_merged=False):
+        super().__init__()
+        self.pw1 = conv_bn_relu(in_channels, dw_channels, 1, 1, 0, groups=1)
+        self.pw2 = conv_bn(dw_channels, in_channels, 1, 1, 0, groups=1)
+        self.large_kernel = ReparamLargeKernelConv(in_channels=dw_channels, out_channels=dw_channels,
+                                                   kernel_size=block_lk_size,
+                                                   stride=1, groups=dw_channels, small_kernel=small_kernel,
+                                                   small_kernel_merged=small_kernel_merged)
+        self.lk_nonlinear = nn.ReLU()
+        self.prelkb_bn = get_bn(in_channels)
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        print('drop path:', self.drop_path)
+
+    def forward(self, x):
+        out = self.prelkb_bn(x)
+        out = self.pw1(out)
+        out = self.large_kernel(out)
+        out = self.lk_nonlinear(out)
+        out = self.pw2(out)
+        return x + self.drop_path(out)
 
 
-if __name__ == '__main__':
-    model = create_RepLKNet31B(small_kernel_merged=False)
-    model.eval()
-    print('------------------- training-time model -------------')
-    print(model)
-    x = torch.randn(2, 3, 224, 224)
-    origin_y = model(x)
-    model.structural_reparam()
-    print('------------------- after re-param -------------')
-    print(model)
-    reparam_y = model(x)
-    print('------------------- the difference is ------------------------')
-    print((origin_y - reparam_y).abs().sum())
+@BACKBONES.register_module()
+class RepLKNetStage(BaseModule):
+
+    def __init__(self, channels, num_blocks, stage_lk_size, drop_path,
+                 small_kernel, dw_ratio=1, ffn_ratio=4,
+                 use_checkpoint=False,  # train with torch.utils.checkpoint to save memory
+                 small_kernel_merged=False,
+                 norm_intermediate_features=False):
+        super().__init__()
+        self.use_checkpoint = use_checkpoint
+        blks = []
+        for i in range(num_blocks):
+            block_drop_path = drop_path[i] if isinstance(drop_path, list) else drop_path
+            #   Assume all RepLK Blocks within a stage share the same lk_size. You may tune it on your own model.
+            replk_block = RepLKBlock(in_channels=channels, dw_channels=int(channels * dw_ratio),
+                                     block_lk_size=stage_lk_size,
+                                     small_kernel=small_kernel, drop_path=block_drop_path,
+                                     small_kernel_merged=small_kernel_merged)
+            convffn_block = ConvFFN(in_channels=channels, internal_channels=int(channels * ffn_ratio),
+                                    out_channels=channels,
+                                    drop_path=block_drop_path)
+            blks.append(replk_block)
+            blks.append(convffn_block)
+        self.blocks = nn.ModuleList(blks)
+        if norm_intermediate_features:
+            self.norm = get_bn(channels)  # Only use this with RepLKNet-XL on downstream tasks
+        else:
+            self.norm = nn.Identity()
+
+    def forward(self, x):
+        for blk in self.blocks:
+            if self.use_checkpoint:
+                x = checkpoint.checkpoint(blk, x)  # Save training memory
+            else:
+                x = blk(x)
+        return x

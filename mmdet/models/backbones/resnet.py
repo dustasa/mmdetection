@@ -1,6 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import warnings
-
+import torch
 import torch.nn as nn
 import torch.utils.checkpoint as cp
 from mmcv.cnn import build_conv_layer, build_norm_layer, build_plugin_layer
@@ -465,7 +465,7 @@ class ResNet(BaseModule):
                 stage_plugins = self.make_stage_plugins(plugins, i)
             else:
                 stage_plugins = None
-            planes = base_channels * 2**i
+            planes = base_channels * 2 ** i
             res_layer = self.make_res_layer(
                 block=self.block,
                 inplanes=self.inplanes,
@@ -488,8 +488,8 @@ class ResNet(BaseModule):
 
         self._freeze_stages()
 
-        self.feat_dim = self.block.expansion * base_channels * 2**(
-            len(self.stage_blocks) - 1)
+        self.feat_dim = self.block.expansion * base_channels * 2 ** (
+                len(self.stage_blocks) - 1)
 
     def make_stage_plugins(self, plugins, stage_idx):
         """Make plugins for ResNet ``stage_idx`` th stage.
@@ -643,6 +643,7 @@ class ResNet(BaseModule):
             x = res_layer(x)
             if i in self.out_indices:
                 outs.append(x)
+        # print(f'----AOSUN---- outs is:{outs}')
         return tuple(outs)
 
     def train(self, mode=True):
@@ -670,3 +671,26 @@ class ResNetV1d(ResNet):
     def __init__(self, **kwargs):
         super(ResNetV1d, self).__init__(
             deep_stem=True, avg_down=True, **kwargs)
+
+
+if __name__ == '__main__':
+    model = ResNet(depth=50,
+                   num_stages=4,
+                   out_indices=(0, 1, 2, 3),
+                   frozen_stages=1,
+                   norm_cfg=dict(type='BN', requires_grad=True),
+                   norm_eval=True,
+                   style='pytorch',
+                   init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50'))
+    model.eval()
+    print('------------------- training-time model -------------')
+    print(model)
+    x = torch.randn(2, 3, 224, 224)
+    origin_y = model(x)
+    print(origin_y)
+    # model.structural_reparam()
+    # print('------------------- after re-param -------------')
+    # print(model)
+    # reparam_y = model(x)
+    # print('------------------- the difference is ------------------------')
+    # print((origin_y - reparam_y).abs().sum())

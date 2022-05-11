@@ -16,10 +16,16 @@ from .resnext import ResNeXt
 from .ssd_vgg import SSDVGG
 from .swin import SwinTransformer
 from .trident_resnet import TridentResNet
+from .replknet_strach import RepLKNet
+from .replknet_strach import ReparamLargeKernelConv
+from .replknet_strach import RepLKNetStage
+from .replknet_strach import RepLKBlock
+from .replknet_strach import ConvFFN
 
 __all__ = [
     'RegNet', 'ResNet', 'ResNetV1d', 'ResNeXt', 'SSDVGG', 'HRNet',
     'MobileNetV2', 'Res2Net', 'HourglassNet', 'DetectoRS_ResNet',
     'DetectoRS_ResNeXt', 'Darknet', 'ResNeSt', 'TridentResNet', 'CSPDarknet',
     'SwinTransformer', 'PyramidVisionTransformer',
-    'PyramidVisionTransformerV2', 'EfficientNet', ]
+    'PyramidVisionTransformerV2', 'EfficientNet',
+    'RepLKNet', 'ReparamLargeKernelConv', 'RepLKNetStage', 'RepLKBlock', 'ConvFFN']
