@@ -22,7 +22,8 @@ model = dict(
     test_cfg=dict(score_thr=0.01, nms=dict(type='nms', iou_threshold=0.65)))
 
 # dataset settings
-data_root = 'data/coco/'
+data_root = 'data/mini_coco/'
+img_norm_cfg = dict(mean=[0, 0, 0], std=[255., 255., 255.], to_rgb=True)
 dataset_type = 'CocoDataset'
 
 train_pipeline = [
@@ -57,8 +58,8 @@ train_dataset = dict(
     type='MultiImageMixDataset',
     dataset=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/instances_train2017.json',
-        img_prefix=data_root + 'train2017/',
+        ann_file=data_root + 'annotations/mini_instances_train2017.json',
+        img_prefix=data_root + 'mini_train2017/',
         pipeline=[
             dict(type='LoadImageFromFile'),
             dict(type='LoadAnnotations', with_bbox=True)
@@ -76,6 +77,7 @@ test_pipeline = [
         transforms=[
             dict(type='Resize', keep_ratio=True),
             dict(type='RandomFlip'),
+            dict(type='Normalize', **img_norm_cfg),
             dict(
                 type='Pad',
                 pad_to_square=True,
@@ -86,19 +88,19 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=16,
+    samples_per_gpu=16,  # batch-size
     workers_per_gpu=4,
     persistent_workers=True,
     train=train_dataset,
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/instances_val2017.json',
-        img_prefix=data_root + 'val2017/',
+        ann_file=data_root + 'annotations/mini_instances_val2017.json',
+        img_prefix=data_root + 'mini_val2017/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/instances_val2017.json',
-        img_prefix=data_root + 'val2017/',
+        ann_file=data_root + 'annotations/mini_instances_val2017.json',
+        img_prefix=data_root + 'mini_val2017/',
         pipeline=test_pipeline))
 
 # optimizer
@@ -115,7 +117,7 @@ optimizer_config = dict(grad_clip=None)
 max_epochs = 300
 num_last_epochs = 15
 resume_from = None
-interval = 2
+interval = 10
 
 # learning policy
 lr_config = dict(
@@ -125,9 +127,9 @@ lr_config = dict(
     by_epoch=False,
     warmup_by_epoch=True,
     warmup_ratio=1,
-    warmup_iters=5,  # 5 epoch
+    warmup_iters=5,  # 5 epochs
     num_last_epochs=num_last_epochs,
-    min_lr_ratio=0.05)
+    min_lr_ratio=0.05,)
 
 runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
 

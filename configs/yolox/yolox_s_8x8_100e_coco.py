@@ -86,7 +86,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=16,
+    samples_per_gpu=16,  # batch-size
     workers_per_gpu=4,
     persistent_workers=True,
     train=train_dataset,
@@ -105,17 +105,17 @@ data = dict(
 # default 8 gpu
 optimizer = dict(
     type='SGD',
-    lr=0.02,
+    lr=0.005,
     momentum=0.9,
     weight_decay=5e-4,
     nesterov=True,
     paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
 optimizer_config = dict(grad_clip=None)
 
-max_epochs = 300
+max_epochs = 100
 num_last_epochs = 15
 resume_from = None
-interval = 2
+interval = 10
 
 # learning policy
 lr_config = dict(
@@ -125,9 +125,9 @@ lr_config = dict(
     by_epoch=False,
     warmup_by_epoch=True,
     warmup_ratio=1,
-    warmup_iters=5,  # 5 epoch
+    warmup_iters=2,  # 2 epoch
     num_last_epochs=num_last_epochs,
-    min_lr_ratio=0.05)
+    min_lr_ratio=0.05,)
 
 runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
 

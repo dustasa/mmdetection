@@ -1,4 +1,4 @@
-_base_ = ['../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py']
+_base_ = ['../../_base_/schedules/schedule_1x.py', '../../_base_/default_runtime.py']
 
 img_scale = (640, 640)  # height, width
 
@@ -22,11 +22,11 @@ model = dict(
     test_cfg=dict(score_thr=0.01, nms=dict(type='nms', iou_threshold=0.65)))
 
 # dataset settings
-data_root = 'data/coco/'
+data_root = 'data2/'
 dataset_type = 'CocoDataset'
 
 train_pipeline = [
-    dict(type='Mosaic', img_scale=img_scale, pad_val=114.0),
+    # dict(type='Mosaic', img_scale=img_scale, pad_val=114.0),
     dict(
         type='RandomAffine',
         scaling_ratio_range=(0.1, 2),
@@ -86,8 +86,8 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=16,
-    workers_per_gpu=4,
+    samples_per_gpu=8,
+    workers_per_gpu=2,
     persistent_workers=True,
     train=train_dataset,
     val=dict(
@@ -105,7 +105,7 @@ data = dict(
 # default 8 gpu
 optimizer = dict(
     type='SGD',
-    lr=0.02,
+    lr=0.005,
     momentum=0.9,
     weight_decay=5e-4,
     nesterov=True,
@@ -115,7 +115,7 @@ optimizer_config = dict(grad_clip=None)
 max_epochs = 300
 num_last_epochs = 15
 resume_from = None
-interval = 2
+interval = 1
 
 # learning policy
 lr_config = dict(
