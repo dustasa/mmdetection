@@ -139,8 +139,15 @@ def yolo2coco(arg):
 
     # 保存结果
     folder = os.path.join(root_path, 'annotations')
+    folder_train = os.path.join(root_path, 'train')
+    folder_val = os.path.join(root_path, 'val')
     if not os.path.exists(folder):
         os.makedirs(folder)
+    if not os.path.exists(folder_train):
+        os.makedirs(folder_train)
+    if not os.path.exists(folder_val):
+        os.makedirs(folder_val)
+
     if arg.random_split or arg.split_by_file:
         for phase in ['train', 'val']:
             json_name = os.path.join(root_path, 'annotations/{}.json'.format(phase))
