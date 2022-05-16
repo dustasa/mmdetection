@@ -2,11 +2,8 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath
-from mmcv.runner import BaseModule
-
 import sys
 import os
-from ..builder import BACKBONES
 
 
 def get_conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias):
@@ -19,11 +16,9 @@ def get_conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation
     if has_large_impl and in_channels == out_channels and out_channels == groups and use_large_impl and stride == 1 and padding == kernel_size // 2 and dilation == 1:
         sys.path.append(os.environ['LARGE_KERNEL_CONV_IMPL'])
         #   Please follow the instructions https://github.com/DingXiaoH/RepLKNet-pytorch/blob/main/README.md
-        #   export LARGE_KERNEL_CONV_IMPL=absolute_path_to_where_you_cloned_the_example
-        #   (i.e., depthwise_conv2d_implicit_gemm.py)
+        #   export LARGE_KERNEL_CONV_IMPL=absolute_path_to_where_you_cloned_the_example (i.e., depthwise_conv2d_implicit_gemm.py)
         # TODO more efficient PyTorch implementations of large-kernel convolutions. Pull requests are welcomed.
-        # Or you may try MegEngine. We have integrated an efficient implementation into MegEngine
-        # and it will automatically use it.
+        # Or you may try MegEngine. We have integrated an efficient implementation into MegEngine and it will automatically use it.
         from depthwise_conv2d_implicit_gemm import DepthWiseConv2dImplicitGEMM
         return DepthWiseConv2dImplicitGEMM(in_channels, kernel_size, bias=bias)
     else:
@@ -77,7 +72,7 @@ def fuse_bn(conv, bn):
     return kernel * t, beta - running_mean * gamma / std
 
 
-class ReparamLargeKernelConv(BaseModule):
+class ReparamLargeKernelConv(nn.Module):
 
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride, groups,
@@ -86,8 +81,7 @@ class ReparamLargeKernelConv(BaseModule):
         super(ReparamLargeKernelConv, self).__init__()
         self.kernel_size = kernel_size
         self.small_kernel = small_kernel
-        # We assume the conv does not change the feature map size, so padding = k//2.
-        # Otherwise, you may configure padding as you wish, and change the padding of small_conv accordingly.
+        # We assume the conv does not change the feature map size, so padding = k//2. Otherwise, you may configure padding as you wish, and change the padding of small_conv accordingly.
         padding = kernel_size // 2
         if small_kernel_merged:
             self.lkb_reparam = get_conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
@@ -132,7 +126,7 @@ class ReparamLargeKernelConv(BaseModule):
             self.__delattr__('small_conv')
 
 
-class ConvFFN(BaseModule):
+class ConvFFN(nn.Module):
 
     def __init__(self, in_channels, internal_channels, out_channels, drop_path):
         super().__init__()
@@ -152,7 +146,7 @@ class ConvFFN(BaseModule):
         return x + self.drop_path(out)
 
 
-class RepLKBlock(BaseModule):
+class RepLKBlock(nn.Module):
 
     def __init__(self, in_channels, dw_channels, block_lk_size, small_kernel, drop_path, small_kernel_merged=False):
         super().__init__()
@@ -176,7 +170,7 @@ class RepLKBlock(BaseModule):
         return x + self.drop_path(out)
 
 
-class RepLKNetStage(BaseModule):
+class RepLKNetStage(nn.Module):
 
     def __init__(self, channels, num_blocks, stage_lk_size, drop_path,
                  small_kernel, dw_ratio=1, ffn_ratio=4,
@@ -213,17 +207,15 @@ class RepLKNetStage(BaseModule):
         return x
 
 
-@BACKBONES.register_module()
-class RepLKNet(BaseModule):
+class RepLKNet(nn.Module):
 
     def __init__(self, large_kernel_sizes, layers, channels, drop_path_rate, small_kernel,
                  dw_ratio=1, ffn_ratio=4, in_channels=3, num_classes=1000, out_indices=None,
                  use_checkpoint=False,
                  small_kernel_merged=False,
-                 use_sync_bn=False,
+                 use_sync_bn=True,
                  norm_intermediate_features=False
-                 # for RepLKNet-XL on COCO and ADE20K, use an extra BN to
-                 # normalize the intermediate feature maps then feed them into the heads
+                 # for RepLKNet-XL on COCO and ADE20K, use an extra BN to normalize the intermediate feature maps then feed them into the heads
                  ):
         super().__init__()
 
@@ -249,8 +241,7 @@ class RepLKNet(BaseModule):
             conv_bn_relu(in_channels=base_width, out_channels=base_width, kernel_size=1, stride=1, padding=0, groups=1),
             conv_bn_relu(in_channels=base_width, out_channels=base_width, kernel_size=3, stride=2, padding=1,
                          groups=base_width)])
-        # stochastic depth. We set block-wise drop-path rate.
-        # The higher level blocks are more likely to be dropped. This implementation follows Swin.
+        # stochastic depth. We set block-wise drop-path rate. The higher level blocks are more likely to be dropped. This implementation follows Swin.
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(layers))]
         self.stages = nn.ModuleList()
         self.transitions = nn.ModuleList()
