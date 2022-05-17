@@ -1,49 +1,59 @@
 _base_ = [
-    '../_base_/datasets/coco_detection.py',
-    '../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py'
+    '../_base_/datasets/mini_coco_detection.py',
+    '../_base_/schedules/schedule_1x.py',
+    '../_base_/default_runtime.py'
 ]
 # model settings
 model = dict(
-    type='FCOS',
+    type='RetinaNet',
     backbone=dict(
         type='RepLKNet',
+        # [K1，K2，K3，K4], the kernel size K
         large_kernel_sizes=[31, 29, 27, 13],
+        # [B1,B2,B3,B4], the number of RepLK Blocks B
         layers=[2, 2, 18, 2],
+        # [C1,C2,C3,C4], the channel dimension C
         channels=[128, 256, 512, 1024],
-        drop_path_rate=0.5,
+        drop_path_rate=0.6,
         small_kernel=5,
         dw_ratio=1,
         num_classes=None,
         out_indices=(0, 1, 2, 3),
         use_checkpoint=True,
         small_kernel_merged=False,
-        use_sync_bn=True  # Note: use SyncBN
+        use_sync_bn=False  # Note: use SyncBN
     ),
     neck=dict(
         type='FPN',
         in_channels=[128, 256, 512, 1024],
         out_channels=256,
         start_level=1,
-        add_extra_convs='on_output',  # use P5
-        num_outs=5,
-        relu_before_extra_convs=True),
+        add_extra_convs='on_input',
+        num_outs=5),
     bbox_head=dict(
-        type='FCOSHead',
+        type='RetinaHead',
         num_classes=80,
         in_channels=256,
         stacked_convs=4,
         feat_channels=256,
-        strides=[8, 16, 32, 64, 128],
+        anchor_generator=dict(
+            type='AnchorGenerator',
+            octave_base_scale=4,
+            scales_per_octave=3,
+            ratios=[0.5, 1.0, 2.0],
+            strides=[8, 16, 32, 64, 128]),
+        bbox_coder=dict(
+            type='DeltaXYWHBBoxCoder',
+            target_means=[.0, .0, .0, .0],
+            target_stds=[1.0, 1.0, 1.0, 1.0]),
         loss_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
             gamma=2.0,
             alpha=0.25,
             loss_weight=1.0),
-        loss_bbox=dict(type='IoULoss', loss_weight=1.0),
-        loss_centerness=dict(
-            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)),
-    # training and testing settings
+        loss_bbox=dict(type='L1Loss', loss_weight=1.0)),
+    # model training and testing settings
     train_cfg=dict(
         assigner=dict(
             type='MaxIoUAssigner',
@@ -100,8 +110,16 @@ data = dict(
     val=dict(pipeline=test_pipeline),
     test=dict(pipeline=test_pipeline))
 
-optimizer = dict(type='AdamW', lr=2e-4, betas=(0.9, 0.999), weight_decay=0.05, paramwise_cfg=dict(norm_decay_mult=0))
-optimizer_config = dict(_delete_=True, grad_clip=dict(max_norm=35, norm_type=2))
+# optimizer
+optimizer = dict(
+                 _delete_=True,
+                 type='AdamW', lr=2e-4,
+                 betas=(0.9, 0.999),
+                 weight_decay=0.05,
+                 paramwise_cfg=dict(norm_decay_mult=0))
+
+optimizer_config = dict(_delete_=True,
+                        grad_clip=dict(max_norm=35, norm_type=2))
 
 # learning policy
 lr_config = dict(
@@ -111,4 +129,4 @@ lr_config = dict(
     warmup_ratio=1.0 / 3,
     step=[16, 22])
 
-runner = dict(type='EpochBasedRunner', max_epochs=24)
+runner = dict(type='EpochBasedRunner', max_epochs=12)

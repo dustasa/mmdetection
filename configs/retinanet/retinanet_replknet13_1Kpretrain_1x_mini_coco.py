@@ -9,19 +9,19 @@ model = dict(
         type='RepLKNet',
         large_kernel_sizes=[13, 13, 13, 13],
         layers=[2, 2, 18, 2],
-        channels=[256, 512, 1024, 2048],
-        drop_path_rate=0.5,
+        channels=[128, 256, 512, 1024],
+        drop_path_rate=0.6,
         small_kernel=5,
         dw_ratio=1,
         num_classes=None,
         out_indices=(0, 1, 2, 3),
         use_checkpoint=True,
         small_kernel_merged=False,
-        use_sync_bn=False  # Note: use BN
-    ),
+        use_sync_bn=False,  # Note: use SyncBN
+        ),
     neck=dict(
         type='FPN',
-        in_channels=[256, 512, 1024, 2048],
+        in_channels=[128, 256, 512, 1024],
         out_channels=256,
         start_level=1,
         add_extra_convs='on_input',
@@ -100,20 +100,20 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=1,
-    workers_per_gpu=1,
+    samples_per_gpu=2,
+    workers_per_gpu=2,
     train=dict(pipeline=train_pipeline),
     val=dict(pipeline=test_pipeline),
     test=dict(pipeline=test_pipeline))
 
 # optimizer
 optimizer = dict(
-                 _delete_=True,
-                 type='AdamW',
-                 lr=2e-4,
-                 betas=(0.9, 0.999),
-                 weight_decay=0.05,
-                 paramwise_cfg=dict(norm_decay_mult=0))
+    _delete_=True,
+    type='AdamW',
+    lr=2e-4,
+    betas=(0.9, 0.999),
+    weight_decay=0.05,
+    paramwise_cfg=dict(norm_decay_mult=0))
 optimizer_config = dict(_delete_=True,
                         grad_clip=dict(max_norm=35, norm_type=2))
 

@@ -57,8 +57,8 @@ train_dataset = dict(
     type='MultiImageMixDataset',
     dataset=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/mini_instances_train2017.json',
-        img_prefix=data_root + 'mini_train2017/',
+        ann_file=data_root + 'annotations/instances_train2017.json',
+        img_prefix=data_root + 'train2017/',
         pipeline=[
             dict(type='LoadImageFromFile'),
             dict(type='LoadAnnotations', with_bbox=True)
@@ -86,26 +86,26 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=16,  # batch-size
+    samples_per_gpu=8,
     workers_per_gpu=4,
     persistent_workers=True,
     train=train_dataset,
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/mini_instances_val2017.json',
-        img_prefix=data_root + 'mini_val2017/',
+        ann_file=data_root + 'annotations/instances_val2017.json',
+        img_prefix=data_root + 'val2017/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/mini_instances_val2017.json',
-        img_prefix=data_root + 'mini_val2017/',
+        ann_file=data_root + 'annotations/instances_val2017.json',
+        img_prefix=data_root + 'val2017/',
         pipeline=test_pipeline))
 
 # optimizer
 # default 8 gpu
 optimizer = dict(
     type='SGD',
-    lr=0.02,
+    lr=0.01,
     momentum=0.9,
     weight_decay=5e-4,
     nesterov=True,
@@ -125,7 +125,7 @@ lr_config = dict(
     by_epoch=False,
     warmup_by_epoch=True,
     warmup_ratio=1,
-    warmup_iters=2,  # 2 epoch
+    warmup_iters=5,  # 5 epoch
     num_last_epochs=num_last_epochs,
     min_lr_ratio=0.05,)
 
@@ -158,3 +158,8 @@ evaluation = dict(
     dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
     metric='bbox')
 log_config = dict(interval=50)
+
+# NOTE: `auto_scale_lr` is for automatically scaling LR,
+# USER SHOULD NOT CHANGE ITS VALUES.
+# base_batch_size = (8 GPUs) x (8 samples per GPU)
+auto_scale_lr = dict(base_batch_size=64)

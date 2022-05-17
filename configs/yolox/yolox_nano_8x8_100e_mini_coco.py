@@ -9,3 +9,8 @@ model = dict(
         num_csp_blocks=1,
         use_depthwise=True),
     bbox_head=dict(in_channels=64, feat_channels=64, use_depthwise=True))
+
+# NOTE: `auto_scale_lr` is for automatically scaling LR,
+# USER SHOULD NOT CHANGE ITS VALUES.
+# base_batch_size = (8 GPUs) x (8 samples per GPU)
+auto_scale_lr = dict(base_batch_size=64)
