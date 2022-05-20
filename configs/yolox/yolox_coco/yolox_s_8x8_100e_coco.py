@@ -23,7 +23,7 @@ model = dict(
     test_cfg=dict(score_thr=0.01, nms=dict(type='nms', iou_threshold=0.65)))
 
 # dataset settings
-data_root = 'data/mini_coco/'
+data_root = 'data/coco/'
 dataset_type = 'CocoDataset'
 
 train_pipeline = [
@@ -87,7 +87,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=24,
+    samples_per_gpu=8,
     workers_per_gpu=4,
     persistent_workers=True,
     train=train_dataset,
@@ -116,7 +116,7 @@ optimizer_config = dict(grad_clip=None)
 max_epochs = 100
 num_last_epochs = 15
 resume_from = None
-interval = 5
+interval = 10
 
 # learning policy
 lr_config = dict(

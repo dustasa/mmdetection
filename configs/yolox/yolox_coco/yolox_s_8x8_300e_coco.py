@@ -1,5 +1,4 @@
-_base_ = ['../../_base_/schedules/schedule_1x.py',
-          '../../_base_/default_runtime.py']
+_base_ = ['../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py']
 
 img_scale = (640, 640)  # height, width
 
@@ -23,7 +22,7 @@ model = dict(
     test_cfg=dict(score_thr=0.01, nms=dict(type='nms', iou_threshold=0.65)))
 
 # dataset settings
-data_root = 'data/mini_coco/'
+data_root = 'data/coco/'
 dataset_type = 'CocoDataset'
 
 train_pipeline = [
@@ -87,7 +86,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=24,
+    samples_per_gpu=8,
     workers_per_gpu=4,
     persistent_workers=True,
     train=train_dataset,
@@ -113,10 +112,10 @@ optimizer = dict(
     paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
 optimizer_config = dict(grad_clip=None)
 
-max_epochs = 100
+max_epochs = 300
 num_last_epochs = 15
 resume_from = None
-interval = 5
+interval = 2
 
 # learning policy
 lr_config = dict(
@@ -128,7 +127,7 @@ lr_config = dict(
     warmup_ratio=1,
     warmup_iters=5,  # 5 epoch
     num_last_epochs=num_last_epochs,
-    min_lr_ratio=0.05,)
+    min_lr_ratio=0.05)
 
 runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
 
