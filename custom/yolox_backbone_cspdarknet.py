@@ -30,15 +30,15 @@ class BaseConv(nn.Module):
     """A Conv2d -> Batchnorm -> silu/leaky relu block"""
 
     def __init__(
-            self, in_channels, out_channels, ksize, stride, groups=1, bias=False, act="silu"
+            self, in_channels, out_channels, kernel_size, stride, groups=1, bias=False, act="silu"
     ):
         super().__init__()
         # same padding
-        pad = (ksize - 1) // 2
+        pad = (kernel_size - 1) // 2
         self.conv = nn.Conv2d(
             in_channels,
             out_channels,
-            kernel_size=ksize,
+            kernel_size=kernel_size,
             stride=stride,
             padding=pad,
             groups=groups,
@@ -57,18 +57,18 @@ class BaseConv(nn.Module):
 class DWConv(nn.Module):
     """Depthwise Conv + Conv"""
 
-    def __init__(self, in_channels, out_channels, ksize, stride=1, act="silu"):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, act="silu"):
         super().__init__()
         self.dconv = BaseConv(
             in_channels,
             in_channels,
-            ksize=ksize,
+            kernel_size=kernel_size,
             stride=stride,
             groups=in_channels,
             act=act,
         )
         self.pconv = BaseConv(
-            in_channels, out_channels, ksize=1, stride=1, groups=1, act=act
+            in_channels, out_channels, kernel_size=1, stride=1, groups=1, act=act
         )
 
     def forward(self, x):
@@ -207,13 +207,14 @@ class CSPDarknet(nn.Module):
         self.out_features = out_features
         Conv = DWConv if depthwise else BaseConv
 
-        base_channels = int(widen_factor * 64)  # 64
-        base_depth = max(round(deepen_factor * 3), 1)  # 3
+        # yolox_nano, widen_factor: 0.25, deepen_factor: 0.33
+        base_channels = int(widen_factor * 64)  # 16
+        base_depth = max(round(deepen_factor * 3), 1)  # 1
 
         # stem
         self.stem = Focus(3, base_channels, kernel_size=3, act=act)
 
-        # dark2
+        # stage1: dark2
         self.dark2 = nn.Sequential(
             Conv(base_channels, base_channels * 2, 3, 2, act=act),
             CSPLayer(
@@ -225,7 +226,7 @@ class CSPDarknet(nn.Module):
             ),
         )
 
-        # dark3
+        # stage2: dark3
         self.dark3 = nn.Sequential(
             Conv(base_channels * 2, base_channels * 4, 3, 2, act=act),
             CSPLayer(
@@ -237,7 +238,7 @@ class CSPDarknet(nn.Module):
             ),
         )
 
-        # dark4
+        # stage3: dark4
         self.dark4 = nn.Sequential(
             Conv(base_channels * 4, base_channels * 8, 3, 2, act=act),
             CSPLayer(
@@ -249,7 +250,7 @@ class CSPDarknet(nn.Module):
             ),
         )
 
-        # dark5
+        # stage4: dark5
         self.dark5 = nn.Sequential(
             Conv(base_channels * 8, base_channels * 16, 3, 2, act=act),
             SPPBottleneck(base_channels * 16, base_channels * 16, activation=act),
