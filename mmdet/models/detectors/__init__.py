@@ -10,6 +10,8 @@ from .detr import DETR
 from .fast_rcnn import FastRCNN
 from .faster_rcnn import FasterRCNN
 from .fcos import FCOS
+from .fcos_reid import FCOSReid
+from .fcos_reid_fpn import FCOSReidFpn
 from .fovea import FOVEA
 from .fsaf import FSAF
 from .gfl import GFL
@@ -28,6 +30,7 @@ from .panoptic_two_stage_segmentor import TwoStagePanopticSegmentor
 from .point_rend import PointRend
 from .queryinst import QueryInst
 from .reppoints_detector import RepPointsDetector
+from .reppoints_detector_reid import RepPointsDetectorReid
 from .retinanet import RetinaNet
 from .rpn import RPN
 from .scnet import SCNet
@@ -42,6 +45,9 @@ from .yolact import YOLACT
 from .yolo import YOLOV3
 from .yolof import YOLOF
 from .yolox import YOLOX
+from .single_stage_reid import SingleStageReidDetector
+from .single_stage_reid_fpn import SingleStageReidFpnDetector
+from .single_two_stage17_6_prw import SingleTwoStageDetector176PRW
 
 __all__ = [
     'ATSS', 'BaseDetector', 'SingleStageDetector', 'TwoStageDetector', 'RPN',
@@ -50,7 +56,8 @@ __all__ = [
     'GridRCNN', 'MaskScoringRCNN', 'RepPointsDetector', 'FOVEA', 'FSAF',
     'NASFCOS', 'PointRend', 'GFL', 'CornerNet', 'PAA', 'YOLOV3', 'YOLACT',
     'VFNet', 'DETR', 'TridentFasterRCNN', 'SparseRCNN', 'SCNet', 'SOLO',
-    'DeformableDETR', 'AutoAssign', 'YOLOF', 'CenterNet', 'YOLOX',
+    'DeformableDETR', 'AutoAssign', 'YOLOF', 'CenterNet', 'YOLOX','RepPointsDetectorReid',
     'TwoStagePanopticSegmentor', 'PanopticFPN', 'QueryInst', 'LAD', 'TOOD',
-    'MaskFormer', 'Mask2Former'
+    'MaskFormer', 'Mask2Former', 'SingleStageReidDetector',
+    'SingleStageReidFpnDetector', 'SingleTwoStageDetector176PRW','FCOSReid', 'FCOSReidFpn'
 ]

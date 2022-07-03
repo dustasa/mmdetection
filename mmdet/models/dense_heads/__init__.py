@@ -1,5 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from .anchor_free_head import AnchorFreeHead
+from .anchor_free_head_reid import AnchorFreeHeadReid
+from .anchor_free_head_reid_fpn import AnchorFreeHeadReidFpn
 from .anchor_head import AnchorHead
 from .atss_head import ATSSHead
 from .autoassign_head import AutoAssignHead
@@ -11,6 +13,9 @@ from .deformable_detr_head import DeformableDETRHead
 from .detr_head import DETRHead
 from .embedding_rpn_head import EmbeddingRPNHead
 from .fcos_head import FCOSHead
+from .fcos_reid_head import FCOSReidHead
+from .fcos_reid_head_focal_oim_sub import FCOSReidHeadFocalOimSub
+from .fcos_reid_head_focal_sub_triqueue import FCOSReidHeadFocalSubTriQueue
 from .fovea_head import FoveaHead
 from .free_anchor_retina_head import FreeAnchorRetinaHead
 from .fsaf_head import FSAFHead
@@ -27,6 +32,7 @@ from .paa_head import PAAHead
 from .pisa_retinanet_head import PISARetinaHead
 from .pisa_ssd_head import PISASSDHead
 from .reppoints_head import RepPointsHead
+from .reppoints_head_reid import RepPointsHeadReid
 from .retina_head import RetinaHead
 from .retina_sepbn_head import RetinaSepBNHead
 from .rpn_head import RPNHead
@@ -39,6 +45,8 @@ from .yolact_head import YOLACTHead, YOLACTProtonet, YOLACTSegmHead
 from .yolo_head import YOLOV3Head
 from .yolof_head import YOLOFHead
 from .yolox_head import YOLOXHead
+from .fcos_reid_head_focal_sub_triqueue3_prw import FCOSReidHeadFocalSubTriQueue3PRW
+from .fcos_reid_head_focal_sub_triqueue3 import FCOSReidHeadFocalSubTriQueue3
 
 __all__ = [
     'AnchorFreeHead', 'AnchorHead', 'GuidedAnchorHead', 'FeatureAdaption',
@@ -52,5 +60,8 @@ __all__ = [
     'AutoAssignHead', 'DETRHead', 'YOLOFHead', 'DeformableDETRHead',
     'SOLOHead', 'DecoupledSOLOHead', 'CenterNetHead', 'YOLOXHead',
     'DecoupledSOLOLightHead', 'LADHead', 'TOODHead', 'MaskFormerHead',
-    'Mask2FormerHead'
+    'Mask2FormerHead',
+	'AnchorFreeHeadReid','RepPointsHeadReid','FCOSReidHead','AnchorFreeHeadReidFpn',
+	'FCOSReidHeadFocalSubTriQueue3PRW', 'FCOSReidHeadFocalSubTriQueue3',
+	'AnchorFreeHeadReidFpn',  'FCOSReidHeadFocalSubTriQueue', 'FCOSReidHeadFocalOimSub'
 ]
